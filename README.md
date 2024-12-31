@@ -6,7 +6,5 @@ This project aims to find and manage duplicate files in a given directory. It sc
 
 - Scan a target directory to locate duplicates  
 - Efficient comparison of file contents via SHA256
-
-## Future plans
-
-- Multithreaded exectution to speed up file comparison
+- Multithreaded execution to speed up file comparison
+- Example CLI to compare file in multiple directories
