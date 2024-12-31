@@ -3,6 +3,8 @@ from pathlib import Path
 import timeit
 import time
 import logging
+import argparse
+import sys
 
 
 def main():
@@ -11,14 +13,34 @@ def main():
     directory. Hardcoded start directory.
     """
 
-    # Set base directory
-    base_dir = Path("C:\\Temp\\")
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        help="List of folders to scan for duplicates."
+    )
+    args = parser.parse_args()
+
+    # Check for help arguments
+    if (not args.paths or
+        args.paths[0].lower() in ["help","-h","--h","-help","--help","/?","/h","/help"]):
+        parser.print_help()
+        sys.exit(0)
+
+    # Validate directories
+    directories = []
+    for p in args.paths:
+        path = Path(p)
+        if not path.is_dir():
+            print(f"Error: The path '{p}' does not exist or is not a directory.")
+            sys.exit(1)
+        directories.append(path)
 
     # Create a DuplicateFileLocator object
     dup_locator = filedup.DuplicateFileLocator()
 
-    # Find duplicates in the base directory
-    duplicates = dup_locator.find_duplicates(base_dir)
+    # Find duplicates in the directories
+    duplicates = dup_locator.find_duplicates(directories)
 
     # Print the duplicates using logging
     for hash, files in duplicates.items():
@@ -33,7 +55,7 @@ if __name__ == "__main__":
 
     # measure time of execution
     start = timeit.default_timer()
-    logging.info("Start processing...")
+    logging.debug("Start processing...")
     main()
     # measure time of execution
     stop = timeit.default_timer()

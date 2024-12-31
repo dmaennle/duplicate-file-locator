@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import Callable
+from joblib import Parallel, delayed
 
-
-def compute_sha256_hash(file_path: Path) -> str:
+def compute_sha256_hash(file_path: Path) -> tuple:
     """
     Compute the SHA256 hash of a file.
 
@@ -13,15 +13,14 @@ def compute_sha256_hash(file_path: Path) -> str:
 
     Returns:
     --------
-    str
-        The SHA256 hash of the file.
+    tuple of str and Path
     """
     import hashlib
     hash_obj = hashlib.sha256()
     with file_path.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             hash_obj.update(chunk)
-    return hash_obj.hexdigest()
+    return (hash_obj.hexdigest(), file_path)
 
 
 class DuplicateFileLocator:
@@ -47,8 +46,23 @@ class DuplicateFileLocator:
                  hash_funct: Callable = compute_sha256_hash):
         self.hash_funct = hash_funct
 
+    def _get_file_size(self, file_path: Path) -> tuple:
+        """
+        Get the size of a file.
+
+        Parameters:
+        -----------
+        file_path: Path
+            The path to the file.
+
+        Returns:
+        --------
+        tuple of int and Path
+        """
+        return (file_path.stat().st_size, file_path)
+
     def find_duplicates(self,
-                        directory: Path,
+                        directories: list[Path],
                         skip_hash: bool = False) -> dict:
         """
         Find duplicate files in a directory.
@@ -63,10 +77,14 @@ class DuplicateFileLocator:
         """
         file_sizes: dict[int, list] = {}
         duplicates: dict[int, list] = {}
-        # Find files with the same size
-        for file_path in directory.rglob("*"):
-            if file_path.is_file():
-                file_size = file_path.stat().st_size
+        with Parallel(n_jobs=-1, return_as="generator") as parallel:
+            # Find files with the same size
+            results = parallel(delayed(self._get_file_size)(file_path)
+                               for directory in directories
+                               for file_path in directory.rglob("*")
+                               if file_path.is_file()
+            )
+            for file_size, file_path in results:
                 if file_size in file_sizes:
                     file_sizes[file_size].append(file_path)
                     # Check if first find of duplicates with this size
@@ -75,15 +93,18 @@ class DuplicateFileLocator:
                 else:
                     file_sizes[file_size] = [file_path]
 
-        # Stop here if skip_hash is False
-        if skip_hash:
-            return duplicates
+            # Stop here if skip_hash is False
+            if skip_hash:
+                return duplicates
 
-        hash_duplicates: dict[str, list] = {}
-        # compare the content of the files using hashing algorithm
-        for size, files in duplicates.items():
-            for file_path in files:
-                hash_value = self.hash_funct(file_path)
+            hash_duplicates: dict[str, list] = {}
+            # compare the content of the files using hashing algorithm
+            results = parallel(delayed(self.hash_funct)(file_path)
+                               for size, files in duplicates.items()
+                               for file_path in files
+            )
+            
+            for hash_value, file_path in results:
                 if hash_value in hash_duplicates:
                     hash_duplicates[hash_value].append(file_path)
                 else:
